@@ -74,7 +74,7 @@ Evaluation metrics include:
 - Leave‑One‑Center‑Out validation (LOCO)
 
 ### Research Question 2
-**When does deep learning outperform classical linear models for biological datasets in a feerated setting?**
+**When does deep learning outperform classical linear models for biological datasets in a federated setting?**
 
 Biological phenotypes may arise from:
 
@@ -362,7 +362,9 @@ Expected AUROC ranges:
 
 ---
 
-TCGA PRAD Clinical Data Setup: The repository does not include TCGA PRAD clinical file pertaining to the TCGA PRAD usecase nor does it contain helper scripts for clinical data download. Users must download them directly from the Genomic Data Commons (GDC) portal. This ensures the repository complies with TCGA data usage policies. Download data using the following steps:
+# TCGA PRAD Clinical Data Setup
+
+The repository does not include TCGA PRAD clinical file pertaining to the TCGA PRAD usecase nor does it contain helper scripts for clinical data download. Users must download them directly from the Genomic Data Commons (GDC) portal. This ensures the repository complies with TCGA data usage policies. Download data using the following steps:
 
     1 — Download clinical metadata
         Open the TCGA PRAD project page:
