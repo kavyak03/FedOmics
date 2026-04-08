@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Union
 
@@ -13,10 +14,20 @@ def save_metrics(metrics_dict, path: Union[str, Path]) -> None:
         json.dump(metrics_dict, f, indent=2)
 
 
+
+def resolve_config_path(path: Union[str, Path]) -> Path:
+    path = Path(path)
+    env_override = os.getenv("FEDOMICS_CONFIG")
+    if env_override and path.name == "config.yaml":
+        return Path(env_override)
+    return path
+
+
 def load_yaml(path: Union[str, Path]):
     import yaml
 
-    with open(path, "r", encoding="utf-8") as f:
+    resolved = resolve_config_path(path)
+    with open(resolved, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

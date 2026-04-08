@@ -1,0 +1,62 @@
+random_seed: 42
+
+# dataset layout
+num_centers: 3
+samples_per_center: 200
+
+# training
+learning_rate: 0.0007
+epochs: 40
+chi2_top_k: 75
+
+# tiny real-cohort CV safeguard
+tcga_cv_top_k: 8
+tcga_single_cohort_cv_splits: 5
+tcga_single_cohort_cv_test_size: 0.25
+
+# warnings
+minimum_real_samples_warn: 30
+minimum_class_samples_warn: 5
+
+# augmentation
+hybrid_noise_fraction: 0.1
+tcga_train_aug_enabled: false
+tcga_train_aug_ratio: 0.5
+tcga_train_aug_balance_mode: conservative
+tcga_disable_augmentation_below_n: 30
+
+# -------- simulation settings --------
+sim_generator_mode: generic_coexpression
+# options:
+# - generic_coexpression
+# - tcga_matched
+
+sim_total_genes: 250
+sim_num_modules: 8
+sim_num_signal_modules: 3
+sim_module_size: 25
+
+sim_signal_strength: 1.0
+sim_noise_scale: 0.60
+sim_center_shift_scale: 0.08
+
+sim_reference_expression_path: data/raw/tcga_prad/expression_matrix.csv
+sim_reference_clinical_path: data/raw/tcga_prad/clinical.tsv
+sim_fallback_to_generic: true
+sim_cov_max_genes: 500
+
+# -------- ablation-only controls --------
+sim_ablation_mode: false
+sim_fixed_threshold: 0.5
+ablation_seeds:
+- 42
+- 123
+- 999
+ablation_modes:
+- linear
+- interaction
+- mixed
+
+## -------- TCGA-informed simulation controls --------
+sim_tcga_label_conditional: false
+sim_tcga_class_blend_weight: 0.75

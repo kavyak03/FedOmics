@@ -179,7 +179,7 @@ Recommended Python version: **Python 3.10+**
 git clone https://github.com/YOUR_USERNAME/FedOmics.git
 cd FedOmics
 
-python -m venv .venv
+py -3 -m venv .venv
 source .venv/bin/activate  # Linux / Mac
 # OR
 .\.venv\Scripts\Activate.ps1  # Windows
@@ -397,6 +397,22 @@ The repository does not include TCGA PRAD clinical file pertaining to the TCGA P
         data/raw/tcga_prad/clinical.tsv
 
 ---
+
+## MLOps and reproducibility
+
+FedOmics includes lightweight ML engineering features for reproducible experimentation:
+
+- **MLflow experiment tracking** for pipeline parameters, config snapshots, metrics, thresholds, QC plots, and run artifacts.
+- **GitHub Actions CI** for automated smoke testing on every push and pull request.
+- **Config override support** via `FEDOMICS_CONFIG`, which makes it easy to run small CI-safe configs without modifying the main config.
+
+### Viewing tracked experiments locally
+
+```bash
+mlflow ui --backend-store-uri "sqlite:///mlflow.db"
+```
+
+Then open the local MLflow UI in your browser to compare runs: http://127.0.0.1:5000
 
 # Applications Beyond Prostate Cancer
 

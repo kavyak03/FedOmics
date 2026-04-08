@@ -1,7 +1,10 @@
 .venv/
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
+.pytest_cache/
 .DS_Store
-data/
+mlruns/
 outputs/
+data/processed/
+data/raw/tcga_prad/
+mlflow.db

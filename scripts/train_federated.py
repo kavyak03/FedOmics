@@ -1,38 +1,52 @@
+import argparse
 from pathlib import Path
+import os
 import sys
 import json
 
+import joblib
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn
-from torch.utils.data import TensorDataset, DataLoader
+from sklearn.feature_selection import chi2
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.feature_selection import chi2
 from sklearn.preprocessing import MinMaxScaler
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+
+import skops.io as sio
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(PROJECT_ROOT))
 
-from src.model import GeneExpressionNet
 from src.federated import federated_average
+from src.mlops import log_standalone_training_run
+from src.model import GeneExpressionNet
 from src.utils import (
-    compute_binary_metrics,
-    standardize_train_val,
     choose_best_threshold,
+    compute_binary_metrics,
     load_yaml,
+    resolve_config_path,
+    standardize_train_val,
 )
 
 PROC_DIR = Path("data/processed")
+MODELS_DIR = PROC_DIR / "models"
 RAW_TCGA_CENTERS_DIR = Path("data/raw/tcga_prad/centers")
-CFG = load_yaml("configs/config.yaml")
+
+CFG_PATH = resolve_config_path("configs/config.yaml")
+CFG = load_yaml(str(CFG_PATH))
 
 train_files = sorted(PROC_DIR.glob("center_*_train.csv"))
 val_files = sorted(PROC_DIR.glob("center_*_val.csv"))
 
 if not train_files or not val_files:
     raise FileNotFoundError("Train/validation files not found. Run preprocess_data.py first.")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--model-backend", choices=["pytorch"], default="pytorch")
+ARGS = parser.parse_args()
 
 
 def get_global_selected_genes():
@@ -47,7 +61,6 @@ def select_top_k_features_train_only(train_df, top_k):
     if "label" not in train_df.columns:
         raise ValueError("train_df must contain a 'label' column")
 
-    # numeric-only features, exclude metadata
     metadata_cols = {"label", "center", "signal_mode", "model_backend", "dataset_mode"}
     numeric_cols = train_df.select_dtypes(include=[np.number]).columns.tolist()
     feature_cols = [c for c in numeric_cols if c not in metadata_cols and c != "label"]
@@ -62,12 +75,11 @@ def select_top_k_features_train_only(train_df, top_k):
     X_scaled = scaler.fit_transform(X)
 
     scores, _ = chi2(X_scaled, y)
-    score_df = pd.DataFrame(
-        {
-            "gene": X.columns.tolist(),
-            "chi2_score": scores,
-        }
-    ).sort_values("chi2_score", ascending=False)
+    score_df = (
+        pd.DataFrame({"gene": X.columns.tolist(), "chi2_score": scores})
+        .sort_values("chi2_score", ascending=False)
+        .reset_index(drop=True)
+    )
 
     k = min(int(top_k), len(score_df))
     selected = score_df.head(k)["gene"].tolist()
@@ -78,7 +90,7 @@ def fit_mlp_model(X_train, y_train, input_dim):
     model = GeneExpressionNet(input_dim=input_dim)
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=float(CFG.get("learning_rate", 0.001))
+        lr=float(CFG.get("learning_rate", 0.001)),
     )
     loss_fn = nn.CrossEntropyLoss()
 
@@ -138,11 +150,6 @@ def compute_average_metrics(metrics_dict):
 
 
 def maybe_get_ablation_threshold(default_threshold):
-    """
-    IMPORTANT:
-    This only changes behavior if sim_ablation_mode == true.
-    Default generic sim and TCGA behavior remain unchanged.
-    """
     if bool(CFG.get("sim_ablation_mode", False)):
         fixed_thr = float(CFG.get("sim_fixed_threshold", 0.5))
         print("Ablation mode: using fixed threshold =", fixed_thr)
@@ -150,11 +157,60 @@ def maybe_get_ablation_threshold(default_threshold):
     return default_threshold
 
 
+def ensure_models_dir():
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    return MODELS_DIR
+
+
+def save_model_bundle(
+    federated_model=None,
+    logreg_model=None,
+    feature_names=None,
+    metadata=None,
+    example_input=None,
+):
+    models_dir = ensure_models_dir()
+
+    saved = {
+        "models_dir": str(models_dir),
+        "federated_model_path": None,
+        "logreg_model_path": None,
+        "feature_names_path": None,
+        "metadata_path": None,
+        "example_input_path": None,
+    }
+
+    if federated_model is not None:
+        federated_path = models_dir / "federated_pytorch_model.pt"
+        torch.save(federated_model.state_dict(), federated_path)
+        saved["federated_model_path"] = str(federated_path)
+
+    if logreg_model is not None:
+        logreg_path = models_dir / "centralized_logreg.skops"
+        sio.dump(logreg_model, logreg_path)
+        saved["logreg_model_path"] = str(logreg_path)
+
+    if feature_names is not None:
+        feature_names_path = models_dir / "feature_names.json"
+        with open(feature_names_path, "w", encoding="utf-8") as f:
+            json.dump({"feature_names": list(feature_names)}, f, indent=2)
+        saved["feature_names_path"] = str(feature_names_path)
+
+    if metadata is not None:
+        metadata_path = models_dir / "model_metadata.json"
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        saved["metadata_path"] = str(metadata_path)
+
+    if example_input is not None:
+        example_input_path = models_dir / "input_example.npy"
+        np.save(example_input_path, example_input.astype(np.float32))
+        saved["example_input_path"] = str(example_input_path)
+
+    return saved
+
+
 def run_leave_one_center_out(center_data, model_type):
-    """
-    Leave-One-Center-Out evaluation:
-    train on all but one center, evaluate on held-out center validation set.
-    """
     results = {}
     centers = list(center_data.keys())
 
@@ -181,7 +237,6 @@ def run_leave_one_center_out(center_data, model_type):
                 random_state=42,
             )
             model.fit(X_train, y_train)
-
             probs = model.predict_proba(X_test)[:, 1]
             threshold = 0.5
 
@@ -201,7 +256,7 @@ def run_leave_one_center_out(center_data, model_type):
                     model(torch.tensor(X_test, dtype=torch.float32)), dim=1
                 )[:, 1].cpu().numpy()
         else:
-            raise ValueError("Unknown model_type: {0}".format(model_type))
+            raise ValueError(f"Unknown model_type: {model_type}")
 
         metrics, _, _ = compute_binary_metrics(y_test, probs, threshold=threshold)
         metrics["threshold"] = float(threshold)
@@ -216,12 +271,11 @@ def run_federated_mode(train_files, val_files):
 
     for train_file in train_files:
         center_name = train_file.stem.replace("_train", "")
-        val_file = PROC_DIR / "{0}_val.csv".format(center_name)
+        val_file = PROC_DIR / f"{center_name}_val.csv"
 
         train_df = pd.read_csv(train_file)
         val_df = pd.read_csv(val_file)
 
-        # numeric-only protection
         usable_genes = [g for g in selected_genes if g in train_df.columns and g in val_df.columns]
 
         X_train = train_df[usable_genes].values.astype(float)
@@ -240,7 +294,6 @@ def run_federated_mode(train_files, val_files):
             "feature_names": usable_genes,
         }
 
-    # all centers should have same selected feature set length in normal mode
     input_dim = len(next(iter(center_data.values()))["feature_names"])
 
     global_model = None
@@ -304,7 +357,7 @@ def run_federated_mode(train_files, val_files):
     )
     best_threshold = maybe_get_ablation_threshold(learned_threshold)
 
-    print("Chosen decision threshold from pooled training data: {0:.4f}".format(best_threshold))
+    print(f"Chosen decision threshold from pooled training data: {best_threshold:.4f}")
     print(
         "Training probability summary: min={0:.4f}, mean={1:.4f}, max={2:.4f}".format(
             train_probs_all.min(),
@@ -322,7 +375,7 @@ def run_federated_mode(train_files, val_files):
             X_val = torch.tensor(d["X_val"], dtype=torch.float32)
             y_val = d["y_val"]
 
-            prob = torch.softmax(global_model(X_val), dim=1)[:, 1].cpu().numpy()
+            prob = torch.softmax(X_val if False else global_model(X_val), dim=1)[:, 1].cpu().numpy()
 
             metrics, fpr, tpr = compute_binary_metrics(
                 y_val,
@@ -404,11 +457,9 @@ def run_federated_mode(train_files, val_files):
             )
         )
 
-    # averages across centers
     federated_avg = compute_average_metrics(federated_metrics)
     logreg_avg = compute_average_metrics(baseline_metrics)
 
-    # LOCO evaluation
     loco_mlp = run_leave_one_center_out(center_data, "mlp")
     loco_lr = run_leave_one_center_out(center_data, "logreg")
 
@@ -443,8 +494,36 @@ def run_federated_mode(train_files, val_files):
             indent=2,
         )
 
+    model_metadata = {
+        "mode": "federated_multi_center",
+        "model_backend": ARGS.model_backend,
+        "input_dim": input_dim,
+        "n_selected_genes": len(selected_genes),
+        "selected_genes": selected_genes,
+        "federated_threshold": float(best_threshold),
+        "logreg_threshold": float(best_threshold_lr),
+        "federated_average_auroc": federated_avg.get("auroc_mean"),
+        "logreg_average_auroc": logreg_avg.get("auroc_mean"),
+    }
+
+    save_model_bundle(
+        federated_model=global_model,
+        logreg_model=logreg,
+        feature_names=selected_genes,
+        metadata=model_metadata,
+        example_input=X_train_pool[:1],
+    )
+
     print(json.dumps(results, indent=2))
     print("Federated training complete")
+
+    if os.getenv("FEDOMICS_MLFLOW_MANAGED_BY_PIPELINE") != "1":
+        log_standalone_training_run(
+            run_name="train_federated_standalone",
+            params={"model_backend": ARGS.model_backend, "mode": "federated_multi_center"},
+            config_path=str(CFG_PATH),
+            processed_dir=PROC_DIR,
+        )
 
 
 def find_single_real_center_file():
@@ -488,6 +567,11 @@ def run_single_cohort_cv_mode():
     mlp_metrics_all = []
     pred_rows = []
     selected_genes_by_split = []
+
+    final_logreg_model = None
+    final_mlp_model = None
+    final_feature_set = None
+    final_example_input = None
 
     for split_idx, (tr_idx, va_idx) in enumerate(splitter.split(full_df.drop(columns=["label"]), y), start=1):
         train_df = full_df.iloc[tr_idx].reset_index(drop=True)
@@ -568,6 +652,11 @@ def run_single_cohort_cv_mode():
             )
         )
 
+        final_logreg_model = logreg
+        final_mlp_model = mlp
+        final_feature_set = split_selected_genes
+        final_example_input = X_train_z[:1]
+
         print(
             "Split {0}: y_val_counts={1}, n_features={2}, logreg_auroc={3}, mlp_auroc={4}".format(
                 split_idx,
@@ -608,8 +697,34 @@ def run_single_cohort_cv_mode():
             selected_rows.append({"split": split_id, "selected_gene": g})
     pd.DataFrame(selected_rows).to_csv(PROC_DIR / "selected_genes_cv.csv", index=False)
 
+    model_metadata = {
+        "mode": "single_cohort_repeated_cv",
+        "model_backend": ARGS.model_backend,
+        "n_splits": int(CFG.get("tcga_single_cohort_cv_splits", 5)),
+        "top_k": top_k,
+        "last_split_feature_count": len(final_feature_set) if final_feature_set else None,
+        "logreg_cv_auroc_mean": results["centralized_logreg_cv"].get("auroc_mean"),
+        "mlp_cv_auroc_mean": results["centralized_mlp_cv"].get("auroc_mean"),
+    }
+
+    save_model_bundle(
+        federated_model=final_mlp_model,
+        logreg_model=final_logreg_model,
+        feature_names=final_feature_set,
+        metadata=model_metadata,
+        example_input=final_example_input,
+    )
+
     print(json.dumps(results, indent=2))
     print("Single-cohort repeated CV evaluation complete")
+
+    if os.getenv("FEDOMICS_MLFLOW_MANAGED_BY_PIPELINE") != "1":
+        log_standalone_training_run(
+            run_name="train_federated_single_cohort_cv_standalone",
+            params={"model_backend": ARGS.model_backend, "mode": "single_cohort_repeated_cv"},
+            config_path=str(CFG_PATH),
+            processed_dir=PROC_DIR,
+        )
 
 
 if len(train_files) == 1:

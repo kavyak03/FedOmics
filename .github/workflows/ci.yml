@@ -1,0 +1,62 @@
+name: FedOmics CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall scripts src
+
+      - name: Run simulation smoke test
+        env:
+          FEDOMICS_CONFIG: configs/config.ci.yaml
+          FEDOMICS_MLFLOW_TRACKING_URI: sqlite:///mlflow.db
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
+          test -f data/processed/metrics.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          metrics = json.loads(Path('data/processed/metrics.json').read_text())
+          assert 'federated_average' in metrics, 'Missing federated_average in metrics.json'
+          assert metrics['federated_average']['auroc_mean'] is not None, 'Missing AUROC mean'
+          print('Smoke-test AUROC:', metrics['federated_average']['auroc_mean'])
+          PY
+
+      - name: Upload smoke-test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fedomics-smoke-test-artifacts
+          path: |
+            data/processed/metrics.json
+            data/processed/pipeline.log
+            data/processed/qc/
+            mlflow.db
+            mlruns/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,62 @@
+name: FedOmics Release Bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall scripts src
+
+      - name: Run release smoke pipeline
+        env:
+          FEDOMICS_CONFIG: configs/config.ci.yaml
+          FEDOMICS_MLFLOW_TRACKING_URI: sqlite:///mlflow.db
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
+          test -f data/processed/metrics.json
+
+      - name: Create release bundle
+        run: |
+          mkdir -p release_bundle
+          cp -r data/processed release_bundle/
+          cp configs/config.ci.yaml release_bundle/
+          cp README.md release_bundle/
+          if [ -f mlflow.db ]; then cp mlflow.db release_bundle/; fi
+          if [ -d mlruns ]; then cp -r mlruns release_bundle/; fi
+          tar -czf fedomics_release_bundle.tar.gz release_bundle
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fedomics-release-bundle
+          path: fedomics_release_bundle.tar.gz
+          retention-days: 30
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fedomics_release_bundle.tar.gz
+          generate_release_notes: true

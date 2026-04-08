@@ -5,6 +5,7 @@ matplotlib
 pyyaml
 requests
 torch
-tensorflow
 seaborn
 tabulate
+mlflow
+skops
