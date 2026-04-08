@@ -105,6 +105,26 @@ def run_command(cmd: str, env: dict, log_handle) -> None:
         raise RuntimeError(f"Failed at {cmd}")
 
 
+def remove_legacy_pickle_artifacts(processed_dir: Path) -> None:
+    """
+    Remove legacy sklearn pickle/joblib artifacts before MLflow logs directories.
+    This prevents MLflow from emitting sklearn pickle safety warnings when the
+    logistic regression baseline is now saved as .skops instead.
+    """
+    models_dir = processed_dir / "models"
+    if not models_dir.exists():
+        return
+
+    legacy_suffixes = {".pkl", ".pickle", ".joblib"}
+    for artifact in models_dir.iterdir():
+        if artifact.is_file() and artifact.suffix.lower() in legacy_suffixes:
+            try:
+                print(f"Removing legacy pickle artifact before MLflow logging: {artifact}")
+                artifact.unlink()
+            except Exception as exc:
+                print(f"Warning: could not remove legacy artifact {artifact}: {exc}")
+
+
 run_name = (
     f"{args.mode}_{args.sim_signal_mode or 'default'}_"
     f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
@@ -153,6 +173,9 @@ try:
             TEMP_COMMANDS_PATH.read_text(encoding="utf-8"),
             encoding="utf-8",
         )
+
+        # Remove stale pickle/joblib artifacts before MLflow logs the processed directory
+        remove_legacy_pickle_artifacts(PROC_DIR)
 
         log_json_metrics(PROC_DIR / "metrics.json", prefix="metrics")
         log_pipeline_outputs(PROC_DIR)

@@ -48,6 +48,5 @@ for group, vals in metrics.items():
         for center, center_vals in vals.items():
             if isinstance(center_vals, dict):
                 lines.append(f"- **{center}**: accuracy={center_vals.get('accuracy')}, f1={center_vals.get('f1')}, auroc={center_vals.get('auroc')}")
-(OUT / "run_summary.md").write_text("
-".join(lines), encoding="utf-8")
+(OUT / "run_summary.md").write_text("".join(lines), encoding="utf-8")
 print("Run report written to outputs/reports/")

@@ -8,3 +8,6 @@ outputs/
 data/processed/
 data/raw/tcga_prad/
 mlflow.db
+*.pkl
+*.pickle
+*.joblib
