@@ -1,5 +1,6 @@
 # FedOmics
-### Federated Learning for Multi-Center Omics Modeling
+
+## Federated Learning for Multi-Center Omics Modeling
 
 FedOmics is a reproducible research framework for training machine‑learning models on **distributed biomedical omics datasets** (gene expression, methylation, proteomics) using **federated learning**.
 
@@ -9,9 +10,7 @@ The project demonstrates how multiple institutions can collaboratively train pre
 
 FedOmics answers this question through controlled simulation experiments and a real-data example using **TCGA prostate cancer (PRAD) gene expression data**.
 
----
-
-# Results Snapshot
+## Results Snapshot
 
 FedOmics evaluates federated learning across simulated and real omics datasets.
 
@@ -41,9 +40,7 @@ These results highlight demonstrate that:
 
 > **Deep learning provides the largest gains when biological signal structure contains nonlinear interactions.**
 
----
-
-# Scientific Motivation
+## Scientific Motivation
 
 Large biomedical datasets are often distributed across hospitals or research institutes. Privacy regulations frequently prevent sharing raw genomic data across institutions.
 
@@ -55,13 +52,12 @@ Federated learning allows institutions to:
 
 This enables collaborative model training while preserving **patient privacy and institutional control**.
 
----
-
-# Experimental Design
+## Experimental Design
 
 FedOmics investigates two core research questions.
 
 ### Research Question 1
+
 **Can federated learning train predictive omics models across institutions without sharing patient data?**
 
 To test this, multiple institutions train models locally and share only model updates with a central aggregator using FedAvg.
@@ -74,6 +70,7 @@ Evaluation metrics include:
 - Leave‑One‑Center‑Out validation (LOCO)
 
 ### Research Question 2
+
 **When does deep learning outperform classical linear models for biological datasets in a federated setting?**
 
 Biological phenotypes may arise from:
@@ -92,7 +89,7 @@ To study this, FedOmics generates datasets with controlled signal structure.
 
 ---
 
-# Pipeline Overview
+## Pipeline Overview
 
 <img src="docs/pipeline_overview.png" width="650">
 
@@ -106,9 +103,7 @@ Workflow:
 6. Evaluate performance using AUROC
 7. Perform cross‑center validation
 
----
-
-# Federated Training Architecture
+## Federated Training Architecture
 
 <img src="docs/federated_architecture.png" width="750">
 
@@ -124,7 +119,7 @@ Raw patient data **never leaves the institution**.
 
 ---
 
-# Biological Signal Simulation
+## Biological Signal Simulation
 
 The simulation engine generates gene expression datasets with controlled biological structure.
 
@@ -138,7 +133,7 @@ This allows controlled evaluation of **when nonlinear models capture additional 
 
 ---
 
-# Repository Structure
+## Repository Structure
 
 ```
 FedOmics/
@@ -171,7 +166,7 @@ FedOmics/
 
 ---
 
-# Installation
+## Installation
 
 Recommended Python version: **Python 3.10+**
 
@@ -189,11 +184,11 @@ pip install -r requirements.txt
 
 ---
 
-# Running the Pipeline
+## Running the Pipeline
 
 NOTE: Please go through the list of all parameters that can be changed to run the pipeline in the configs/config.yaml file
 
-## Generic Simulation (Recommended First Run)
+### Generic Simulation (Recommended First Run)
 
 ```
 python -m scripts.run_pipeline --clean --mode sim
@@ -214,7 +209,7 @@ data/processed/
 
 ---
 
-# Signal-Specific Experiments
+## Signal-Specific Experiments
 
 ```
 python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
@@ -224,7 +219,7 @@ python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode mixed
 
 ---
 
-# Interaction Sensitivity Ablation
+### Interaction Sensitivity Ablation
 
 ```
 python scripts/run_interaction_ablation.py
@@ -240,7 +235,7 @@ data/processed/ablation/plots
 
 ---
 
-# TCGA PRAD Real Data Run
+## TCGA PRAD Real Data Run
 
 ```
 python -m scripts.run_pipeline --clean --mode tcga --download-mode api
@@ -258,7 +253,7 @@ NOTE: '--download-mode' can be changed to 'client' for data download through GDC
 
 ---
 
-# Output Files
+## Output Files
 
 After a run:
 
@@ -290,14 +285,16 @@ Examples include:
 
 ---
 
-# Design Philosophy
+## Design Philosophy
 
 FedOmics follows three design principles.
 
 ### Scientific transparency
+
 All experiments include **logistic regression baselines** so deep learning improvements are scientifically justified.
 
 ### Biological realism
+
 Simulations incorporate:
 
 • gene coexpression modules  
@@ -316,7 +313,7 @@ Experiments are reproducible via:
 
 ---
 
-# Experiment Reproducibility Guide
+## Experiment Reproducibility Guide
 
 To reproduce the main experiments:
 
@@ -362,7 +359,7 @@ Expected AUROC ranges:
 
 ---
 
-# TCGA PRAD Clinical Data Setup
+## TCGA PRAD Clinical Data Setup
 
 The repository does not include TCGA PRAD clinical file pertaining to the TCGA PRAD usecase nor does it contain helper scripts for clinical data download. Users must download them directly from the Genomic Data Commons (GDC) portal. This ensures the repository complies with TCGA data usage policies. Download data using the following steps:
 
@@ -396,8 +393,6 @@ The repository does not include TCGA PRAD clinical file pertaining to the TCGA P
         ```
         data/raw/tcga_prad/clinical.tsv
 
----
-
 ## MLOps and reproducibility
 
 FedOmics includes lightweight ML engineering features for reproducible experimentation:
@@ -414,7 +409,240 @@ mlflow ui --backend-store-uri "sqlite:///mlflow.db"
 
 Then open the local MLflow UI in your browser to compare runs: http://127.0.0.1:5000
 
-# Applications Beyond Prostate Cancer
+## Docker
+
+FedOmics can be run inside Docker to provide a portable, reproducible execution environment for both simulation-based experiments and TCGA-based workflows.
+
+The Docker image packages:
+
+- Python runtime
+- project dependencies
+- pipeline source code
+
+Large or external datasets such as TCGA clinical metadata are not baked into the image. Instead, they should be mounted at runtime as external volumes. This keeps the image lightweight and separates reproducible execution from dataset management.
+
+### Build the image
+
+```bash
+docker build -t fedomics:latest .
+```
+
+### Run simulation mode in Docker
+
+This is the simplest Docker entrypoint and does not require external TCGA files.
+
+```bash
+docker run --rm \
+  -e FEDOMICS_CONFIG=configs/config.ci.yaml \
+  -e FEDOMICS_MLFLOW_TRACKING_URI=sqlite:///mlflow.db \
+  fedomics:latest \
+  python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
+```
+
+This runs a lightweight simulation smoke test inside the container.
+
+### Persist outputs locally
+
+To save pipeline outputs and MLflow tracking data outside the container, mount local paths into the container.
+
+Linux / macOS
+
+```bash
+docker run --rm \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/mlflow.db:/app/mlflow.db \
+  -e FEDOMICS_CONFIG=configs/config.ci.yaml \
+  -e FEDOMICS_MLFLOW_TRACKING_URI=sqlite:///mlflow.db \
+  fedomics:latest \
+  python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
+```
+
+#### Windows PowerShell
+
+```powershell
+docker run --rm `
+  -v "E:\Placement stuff\InterviewPrepWork\GitHubProjects\FedOmics\data:/app/data" `
+  -v "E:\Placement stuff\InterviewPrepWork\GitHubProjects\FedOmics\mlflow.db:/app/mlflow.db" `
+  -e FEDOMICS_CONFIG=configs/config.ci.yaml `
+  -e FEDOMICS_MLFLOW_TRACKING_URI=sqlite:///mlflow.db `
+  fedomics:latest `
+  python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
+```
+
+This persists pipeline outputs under `data/processed/`. MLflow metadata in `mlflow.db`
+
+### Run TCGA mode in Docker
+
+TCGA-based runs may require external files such as:
+`data/raw/tcga_prad/clinical.tsv`
+`data/raw/tcga_prad/expression_matrix.csv`
+These files should exist on the host machine and be mounted into the container at runtime.
+
+#### Expected local structure
+
+```text
+FedOmics/
+├── data/
+│   └── raw/
+│       └── tcga_prad/
+│           ├── clinical.tsv
+│           └── expression_matrix.csv
+```
+
+##### Example TCGA Docker run (Windows PowerShell)
+
+```powershell
+docker run --rm `
+  -v "E:\Placement stuff\InterviewPrepWork\GitHubProjects\FedOmics\data:/app/data" `
+  -v "E:\Placement stuff\InterviewPrepWork\GitHubProjects\FedOmics\mlflow.db:/app/mlflow.db" `
+  -e FEDOMICS_MLFLOW_TRACKING_URI=sqlite:///mlflow.db `
+  fedomics:latest `
+  python -m scripts.run_pipeline --clean --mode tcga --download-mode api
+```
+
+Inside the container, the clinical file will be available at:
+
+```text
+/app/data/raw/tcga_prad/clinical.tsv
+```
+
+#### Verify mounted TCGA files inside the container
+
+To confirm the mount is working correctly:
+
+```bash
+docker run --rm \
+  -v $(pwd)/data:/app/data \
+  fedomics:latest \
+  ls /app/data/raw/tcga_prad
+```
+
+You should see files such as:
+
+```text
+clinical.tsv
+expression_matrix.csv
+```
+
+### MLflow inside Docker
+
+FedOmics uses MLflow for experiment tracking. When `FEDOMICS_MLFLOW_TRACKING_URI=sqlite:///mlflow.db` is set, MLflow stores run metadata in a local SQLite database file.
+
+To inspect runs after Docker execution:
+
+```bash
+mlflow ui --backend-store-uri "sqlite:///mlflow.db"
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5000
+```
+
+### Docker Compose
+
+If you want a simpler one-command workflow, you can use `docker compose` instead of a long `docker run` command.
+
+A typical `docker-compose.yml` can define:
+
+- the FedOmics container
+- mounted local `data/` directory
+- mounted `mlflow.db`
+- default environment variables for simulation or TCGA mode
+
+#### Example use case
+
+```bash
+docker compose up
+```
+
+This is useful when you want a cleaner local developer workflow, especially for repeated simulation runs.
+
+#### Example Docker Compose workflow
+
+A compose file can mount the same runtime data paths used above:
+
+- host `data/` → container `/app/data`
+= host `mlflow.db` → container `/app/mlflow.db`
+- and set:
+`FEDOMICS_CONFIG=configs/config.ci.yaml`
+`FEDOMICS_MLFLOW_TRACKING_URI=sqlite:///mlflow.db`
+
+#### Example commands
+
+Build and start:
+
+```bash
+docker compose up --build
+```
+
+Run once and exit:
+
+```bash
+docker compose run --rm fedomics python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
+```
+
+Run TCGA mode:
+
+```bash
+docker compose run --rm fedomics python -m scripts.run_pipeline --clean --mode tcga --download-mode api
+```
+
+### CI/CD for the Dockerized Pipeline
+
+FedOmics can also use Docker as part of its CI/CD workflow, which is often a stronger engineering signal than distributing only a release zip.
+
+#### CI for Docker
+
+In CI, GitHub Actions can:
+
+- build the Docker image
+- run a smoke-test simulation inside the container
+- fail fast if the environment or pipeline breaks
+
+This verifies that the containerized pipeline itself is reproducible and runnable.
+
+#### Example CI behavior
+
+A Docker CI workflow typically does:
+
+```text
+git push
+   ↓
+GitHub Actions builds Docker image
+   ↓
+Container runs simulation smoke test
+   ↓
+Workflow passes or fails
+```
+
+#### Example container smoke test command
+
+```bash
+docker run --rm \
+  -e FEDOMICS_CONFIG=configs/config.ci.yaml \
+  -e FEDOMICS_MLFLOW_TRACKING_URI=sqlite:///mlflow.db \
+  fedomics:ci \
+  python -m scripts.run_pipeline --clean --mode sim --sim-signal-mode linear
+```
+
+### CD for Docker
+
+For continuous delivery, a tagged GitHub workflow can build and publish the Docker image to a container registry such as GitHub Container Registry (GHCR).
+
+```text
+push tag v1.0.0
+   ↓
+GitHub Actions builds Docker image
+   ↓
+Image pushed to GHCR
+   ↓
+Published image becomes:
+ghcr.io/<username>/fedomics:v1.0.0
+```
+
+## Applications Beyond Prostate Cancer
 
 FedOmics can be adapted for:
 
@@ -423,9 +651,7 @@ FedOmics can be adapted for:
 • multi‑omics disease modeling  
 • privacy‑preserving biomedical AI
 
----
-
-# Future Extensions
+## Future Extensions
 
 Possible improvements include:
 
@@ -434,8 +660,6 @@ Possible improvements include:
 • differential privacy for federated training  
 • survival analysis models
 
----
-
-# License
+## License
 
 MIT License
